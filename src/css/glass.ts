@@ -363,15 +363,15 @@ body[data-bloom-variant] div[class*="_card"][class*="_preview"]:hover {
   background: var(--dsw-alias-bg-layer-1);
 }
 
-/* ═══ 表格内部分隔线加强（v0.9.0）用户截图反馈列线几乎不可见 ═══
-   原 CSS 用 var(--bloom-hairline)（莫兰迪 30% alpha）做列分隔，
-   在深色氛围渐变上几乎消失，看起来像没线的「列表」。提到
-   hairline-strong（55% alpha）并给 thead 加一档淡底，列与行都立起来。 */
-body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) th,
-body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) td {
-  border-color: var(--bloom-hairline-strong);
-}
+/* ═══ 表格分隔线（v0.9.0 加、2026-11-14 调整）═══════════════════════════
+   原先：th/td 统一提到 hairline-strong（55% alpha），配合 component.ts 的
+   列竖线，做成"列与行都立起来"的网格。
+   owner 2026-11-14：「表格、一级、二级标题等有一个横杠和竖杠，影响美观」——
+   竖线已从 component.ts 移除，所以这里不再需要给所有 th/td 提亮；
+   只让 thead 的下边线（表头与内容的界）保持一档更清晰，行分隔保持 hairline。
+   斑马纹与表头淡底保留，它们是背景层次，不是线条。 */
 :is([class*="_tableScroll"], [class*="_tablePane"]) thead th {
+  border-bottom-color: var(--bloom-hairline-strong);
   background: rgba(var(--bloom-morandi), 0.10);
 }
 body[data-ds-dark-theme] :is([class*="_tableScroll"], [class*="_tablePane"]) thead th {

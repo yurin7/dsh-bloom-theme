@@ -467,26 +467,12 @@ body[data-bloom-variant] [data-variant="think"][data-expanded] [data-open] [data
 }
 
 /* ═══ 3. Markdown 排版质感 ═════════════════════════════════════════
-   照搬原版手法：标题渐变短横、hr 两端消隐、引用块左侧主色条。 */
-[class*="_markdown"] h1,
-[class*="_markdown"] h2,
-[class*="_markdown"] h3 {
-  position: relative;
-}
-[class*="_markdown"] h1::after,
-[class*="_markdown"] h2::after,
-[class*="_markdown"] h3::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -0.34em;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(var(--bloom-morandi), 0.45), transparent);
-}
-[class*="_markdown"] h1::after { width: 76px; height: 3px; }
-[class*="_markdown"] h2::after { width: 56px; }
-[class*="_markdown"] h3::after { width: 40px; background: linear-gradient(90deg, rgba(var(--bloom-morandi), 0.28), transparent); }
+   照搬原版手法：hr 两端消隐、引用块左侧主色条。
+
+   ⚠️ 2026-11-14 owner：「聊天中表格、一级、二级标题等有一个横杠和竖杠，影响美观」。
+   标题下方的渐变短横（h1/h2/h3 的 ::after）与表格的列分隔竖线移除 ——
+   这两样是原版从 typora 主题搬过来的装饰，在聊天气泡里显得嘈杂。
+   标题只保留字号/粗细/间距的层级差异；表格只留横向行分隔线。 */
 
 hr {
   border: 0;
@@ -511,10 +497,18 @@ code {
      div.md-code-block（实色底 + 圆角）> div > pre.shiki（背景透明）
    曾经把 border/box-shadow 加在 pre 上：两层各画一个 12px 圆角框 = 框中框，
    而且 pre 背景透明，阴影直接投进容器内部形成一圈脏边。
-   md-code-block 是 DSH 的全局类名（非 CSS Modules hash），可以稳定引用。 */
+   md-code-block 是 DSH 的全局类名（非 CSS Modules hash），可以稳定引用。
+
+   ⚠️ 2026-11-14 owner：「代码块也是，没有边框，只有圆角是白色的」。
+   原因是 liquid.ts 里一条高特异性规则把 .md-code-block 归进了浮层组：
+       border-color: transparent           ← 描边被擦掉
+       box-shadow: inset 0 1px 0 rgba(255,255,255,.16)  ← 顶部白色内高光
+   于是只剩"白边的圆角、没有框"。代码块是内容容器，不是浮层。
+   这里用 !important 钉死描边与阴影，不再被任何材质档的浮层配方盖掉。 */
 .md-code-block {
-  border: 1px solid var(--bloom-hairline);
-  box-shadow: var(--bloom-shadow-sm);
+  border: 1px solid var(--bloom-hairline-strong, var(--bloom-hairline)) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--bloom-shadow-sm) !important;
   overflow: hidden;
 }
 .md-code-block pre,
@@ -619,21 +613,38 @@ body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]):not
 }
 body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) th,
 body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) td {
+  /* ⚠️ 2026-11-14 owner：「表格……有一个横杠和竖杠，影响美观」。
+     这里原来还有 border-right-width: 1px + solid，给每一列画竖线；
+     加上 glass.ts 把颜色提到 hairline-strong（55% alpha），列线相当显眼，
+     表格看起来像 Excel 网格。现在只保留横向行分隔线（border-bottom），
+     列与列靠留白区分 —— 这是主流文档排版的表格观感。 */
   border-color: var(--bloom-hairline);
-  border-right-width: 1px;
-  border-right-style: solid;
+  border-right-width: 0;
+  border-right-style: none;
+  /* ⚠️ border-bottom-style 必须显式写 solid：
+     只设 width 而 style 保持默认 none 时，计算值会归一成 0px（实测），
+     行分隔线直接不显示。 */
   border-bottom-width: 1px;
+  border-bottom-style: solid;
 }
 :is([class*="_tableScroll"], [class*="_tablePane"]) th:last-child,
 :is([class*="_tableScroll"], [class*="_tablePane"]) td:last-child { border-right: 0; }
-:is([class*="_tableScroll"], [class*="_tablePane"]) tr:last-child th,
-:is([class*="_tableScroll"], [class*="_tablePane"]) tr:last-child td { border-bottom: 0; }
+/* 表格最后一行不画下边线（否则表格底部会多出一条与圆角打架的线）。
+   ⚠️ 必须限定在 tbody：只写 tr:last-child 时，**表头那唯一一行**也满足条件，
+   于是 thead th 的 border-bottom 被清零 —— 表头与内容之间的分界线消失
+   （2026-11-14 实测：CDP 里这条规则排在 thead th 之后并胜出）。
+   表格没有 tbody 时（纯 thead 表）不受影响，那时本来也不需要底边。 */
+:is([class*="_tableScroll"], [class*="_tablePane"]) tbody tr:last-child th,
+:is([class*="_tableScroll"], [class*="_tablePane"]) tbody tr:last-child td { border-bottom: 0; }
 :is([class*="_tableScroll"], [class*="_tablePane"]) th:first-child,
 :is([class*="_tableScroll"], [class*="_tablePane"]) td:first-child { padding-left: 16px; }
 :is([class*="_tableScroll"], [class*="_tablePane"]) thead th {
   background: rgba(var(--bloom-morandi), 0.10);
   font-weight: 600;
+  /* 表头与内容之间那条线要保留（表格的上下界限）。
+     style 同样必须显式写 solid，只给 width 会被归一成 0px。 */
   border-bottom-width: 1px;
+  border-bottom-style: solid;
   border-bottom-color: var(--bloom-hairline-strong);
   color: var(--dsw-alias-label-secondary, currentColor);
 }

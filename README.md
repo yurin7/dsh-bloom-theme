@@ -2,7 +2,7 @@
 
 <p align="center"><strong>给 DeepSeek Harness 一套耐看的中国风玻璃主题。</strong><br/>15 套莫兰迪配色 · 三种玻璃质感 · 全局统一材质</p>
 
-> **这是 [webkubor/dsh-bloom-theme](https://github.com/webkubor/dsh-bloom-theme) 的定制版本（v0.28.1）。**
+> **这是 [webkubor/dsh-bloom-theme](https://github.com/webkubor/dsh-bloom-theme) 的定制版本（v0.28.2）。**
 > 原项目采用 MIT 许可，版权归原作者 webkubor 所有。
 > 本仓库在原版基础上做了较大幅度的交互与视觉调整，见下方 [相对原版的改动](#相对原版的改动)。
 
@@ -15,7 +15,7 @@ dsh plugin --profile <你的 profile 名> add github:yurin7/dsh-bloom-theme
 或用本地包（本仓库 Releases 页可下载 `.tgz`）：
 
 ```bash
-dsh plugin --profile <你的 profile 名> add ./dsh-bloom-theme-0.28.1.tgz
+dsh plugin --profile <你的 profile 名> add ./dsh-bloom-theme-0.28.2.tgz
 ```
 
 桌面端也可以在侧栏「插件」管理中安装。

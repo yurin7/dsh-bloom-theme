@@ -90,15 +90,31 @@ ${s} .dsh-bloom-head { box-shadow: none; }
    于是无论在哪种材质下都长成同一副液态玻璃面板 —— owner 要求
    「排队消息也应用一下材质」，而这条规则的特异性高于 component.ts 里那条，
    必须在这里一并改成读材质变量，否则永远被它盖住。 */
+/* ⚠️ 2026-11-14：排队条（_dock:has(>_preview)）与代码块（.md-code-block）
+   都已从这一组里摘出来单独处理。
+   - 排队条：见下方独立规则（要跟随材质变量）。
+   - 代码块：owner 实拍「代码块没有边框，只有圆角是白色的」。
+     病因就是它原来吃这一组的 border-color: transparent + box-shadow: ${RIM}：
+     RIM 里的第一段是 inset 0 1px 0 rgba(255,255,255,.16)（顶部一条白色内高光），
+     而边框被设成透明 —— 于是剩下"白边的圆角、没有框"的怪样子。
+     代码块是内容容器、不是浮层，不该套浮层那套高光。 */
 ${s} div[class*="_bubble"],
 ${s} [class*="_menu"]:not([class*="_menuAnchor"]),
-${s} [class*="_selector"],
-${s} .md-code-block {
+${s} [class*="_selector"] {
   background: ${PANE};
   border-color: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: ${RIM};
+}
+/* 代码块：实色淡底 + 明确描边，不要白色内高光。 */
+${s} .md-code-block {
+  background: var(--bloom-surface-fill, ${PANE});
+  background-image: var(--bloom-surface-image, none);
+  border: 1px solid var(--bloom-hairline-strong, var(--dsw-alias-border-l1)) !important;
+  backdrop-filter: var(--bloom-surface-filter, ${BLUR});
+  -webkit-backdrop-filter: var(--bloom-surface-filter, ${BLUR});
+  box-shadow: var(--bloom-shadow-sm, none) !important;
 }
 /* 排队条：跟随用户选的材质（与 surfaces.ts 同一套变量）。
    ⚠️ 真实结构是 _dock > _panel > (_panel::before 画背景)，_preview 只是行内文本。
