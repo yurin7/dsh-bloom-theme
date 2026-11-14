@@ -1,0 +1,1148 @@
+/**
+ * 质感层 —— 这是「Bloom 好看」的真正来源，不是色值。
+ *
+ * 原版 typora-Bloom-theme 的 base-light/base-dark.css 共 2968 行，做的就是这件事：
+ * 14 处氛围渐变 + 20 处长距柔影 + 35 处圆角 + 渐变装饰线。只搬色板（root-*.css，89 行）
+ * 得到的是「换了色的原界面」，不是 Bloom。
+ *
+ * 全部用 var(--bloom-*)（见 bloomTokens），所以这份 CSS 只写一遍，4 个变体 × 明暗自动适配。
+ *
+ * ⚠️ 选择器脆弱性：DSH 用 CSS Modules，类名形如 `wSkVaW_root`（<hash>_<语义名>）。
+ * hash 随 DSH 构建变化，语义名稳定，所以这里一律用 [class*="_语义名"] 后缀匹配。
+ * DSH 改版导致失配时，效果只会「退回纯色」——不会错位或不可用，属安全降级。
+ */
+export const COMPONENT_CSS = `
+/* [LES-10][LES-30] */
+body[data-bloom-variant] { --dsw-focus-ring-color: var(--bloom-accent); background-color: var(--dsw-alias-bg-base) !important; }
+
+/* 让 body 的氛围层透出来：DSH 这几个全屏容器自带不透明底色会盖住它。
+   侧栏与卡片保留自己的 surface 色（原版同样保留），只做描边和光。 */
+body[data-bloom-variant] [class*="_frame"],
+body[data-bloom-variant] [class*="_centerCol"],
+/* :has() 里不能加子组合器（\`> \`）：实测 DSH 的结构是 _root > _body > _scrollBody，
+   scrollBody 是孙子。写成子选择器这条一直没命中 —— 会话区一直盖着
+   oklch(0.28 0.02 240) 不透明底，body 的流线在中区完全看不见（这就是
+   owner 说「没光感」的真正原因）。 */
+body[data-bloom-variant] [class*="_root"]:has([class*="_scrollBody"]),
+/* 2026-10-02：DSH 0.2.0 给会话滚动区发了语义属性 data-conversation-scroll
+   （实测 0.2.0-rc.2 的 chat 包里有 \`[data-conversation-scroll] .EvIC1a_root{...}\`）。
+   按本文件下面那条教训——**用宿主语义属性、不用 hash 类名**——把它一并挂上。
+   老类名全部保留：Web UI / 旧构建回退时仍然靠它们。 */
+body[data-bloom-variant] [data-conversation-scroll],
+body[data-bloom-variant] [class*="_scrollBody"] {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* ═══ 2. 冷光线条 ═════════════════════════════════════════════════
+   细、冷、低透明度的莫兰迪描边 + 极弱外辉。深色下最出效果。 */
+
+/* ═══ 侧栏 ════════════════════════════════════════════════════════
+   之前只给了右侧一道竖线，内部还是一整块死板的纯色。补足：顶部氛围淡染、
+   会话项冷光态、分组标题层级。 */
+[class*="_sidebarCol"] {
+  position: relative;
+  /* v0.15 注：原本想加 inset 描边 + 顶部内高光（"莫兰迪纸边"感），但发现
+     src/css/glass.ts 137 行已经有 v0.10.x 的 box-shadow 选择器 —— 它的 inset
+     描边用 **纯白色 rgba(255,255,255, .22)**，是 owner 给 10 套变体做的"统一白色
+     光带"，不是疏忽。我的 v0.15 想把描边换成 morandi 灰蓝（misty 蓝灰）会
+     让 10 套变体的描边颜色不一致、踩 owner 跨变体一致的设计意图。
+
+     在没有更高特异性选择器的情况下，"统一白色"是我的越权代价。故保留
+     glass.ts 137 那条 v0.10.x 的设计、v0.15 在 sidebar 上**什么也不加**。
+     等 owner 拍板要不要跨变体换色（这是个跨 10 个变体的设计决策）再动。
+     密度补齐这一版的"质感"留给气泡纸感 + composer hover lift + 入场节奏。 */
+  box-shadow: 1px 0 0 var(--bloom-hairline), 8px 0 32px -10px var(--bloom-glow);
+  /* 顶部莫兰迪淡染，跟主区氛围同源，消除"两块拼起来"的割裂感 */
+  background-image:
+    linear-gradient(180deg, rgba(var(--bloom-morandi), 0.1), transparent 260px),
+    radial-gradient(600px circle at 0% 0%, rgba(var(--bloom-morandi), 0.08), transparent 60%);
+}
+
+/* 会话条目：圆角 + 过渡。hover / 选中的着色统一在 §6「会话行」那一处，
+   这里不再重复一遍（曾经两处各写一遍 6% 和 7%，靠 !important 决定谁赢，
+   等于用 !important 压自己人）。 */
+[class*="_sidebarCol"] [role="treeitem"],
+[class*="_sidebarCol"] [class*="_sessionRow"] {
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+[class*="_sidebarCol"] [role="treeitem"][aria-selected="true"] [class*="_title"],
+[class*="_sidebarCol"] [class*="_selected"] [class*="_title"] {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+/* v0.10.x（owner 反馈「脏」）：左侧 3px 蓝竖条是脏点 —— 莫兰迪克制不应有这种色块。
+   删掉 ::before。选中感靠 bg 的 8% 染色传达。 */
+
+/* 新建会话按钮：极淡底色，无 border，文字与图标都用主文字色（owner 反馈「脏」——
+   之前 accent 色的 svg + accent 染色 bg + hairline border 三层叠，跟莫兰迪"统一克制"冲突）。
+   现在的按钮只靠 8% accent 染色跟会话行区分，没有色块、没有边框、没有彩色文字。
+   ⚠️ 选择器必须写 button[class*="_newSession"]：类名是子串匹配，
+   hHd-Xa_newSession 的**后代** hHd-Xa_newSessionLabelMask / _newSessionContent /
+   _newSessionLabel / _newSessionShortcut 全都含 "_newSession"，裸写
+   [class*="_newSession"] 会把同一份底色叠三层（1-(0.92³)≈22%），
+   而 Content 比 LabelMask 宽 38px 且是直角 —— 于是按钮里套出一个硬边小条，
+   看上去像「盒中盒」（2026-09-29 实拍）。详见 §去硬边框 那条的同款注解。 */
+[class*="_sidebarCol"] button[class*="_newSession"] {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 92%);
+  border: 0;
+  border-radius: 10px;
+  transition: background 180ms ease;
+}
+[class*="_sidebarCol"] button[class*="_newSession"]:hover {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 86%);
+}
+/* 图标和文字都用主色 —— 不让 accent 出现在按钮上，跟莫兰迪统一 */
+[class*="_sidebarCol"] button[class*="_newSession"] svg {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 分组标题（工作区 / 未分组）：拉开与条目的层级。
+   _sectionLabel 是 DSH 实际用的类名片段（qDHVXG_sectionLabel），
+   12px + 字距让它明显是「标签」而不是一行内容。 */
+[class*="_sidebarCol"] [class*="_sectionLabel"] {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* 分区头右侧的搜索/动作图标：默认 60% 亮度降权，hover 才全亮 ——
+   和「工作区」标题同排且全亮时，四个元素抢注意力，列表反而不突出。 */
+[class*="_sidebarCol"] [class*="_sectionHeader"] [class*="_searchSlot"],
+[class*="_sidebarCol"] [class*="_sectionHeader"] [class*="_headerActions"] {
+  opacity: 0.6;
+  transition: opacity 150ms ease;
+}
+[class*="_sidebarCol"] [class*="_sectionHeader"] [class*="_searchSlot"]:hover,
+[class*="_sidebarCol"] [class*="_sectionHeader"] [class*="_headerActions"]:hover {
+  opacity: 1;
+}
+
+/* 会话行元信息（时间戳/来源等 _slot）：DSH 默认 0.55 透明度，
+   暗色氛围渐变上偏糊，统一提到主题的 secondary 档（明暗自适应）。 */
+[class*="_sidebarCol"] [class*="_sessionRow"] [class*="_slot"] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 会话列表细滚动条：4px、冷光 thumb、hover 才加强。
+   系统默认滚动条在 280px 的窄栏里非常抢；DSH 自己只有全局 alias 变量，
+   没有给侧栏列表单独收窄。 */
+/* [LES-13] 会话列表只纵向滚动，横向溢出一律裁掉 */
+[class*="_sidebarCol"] [class*="_list"] { overflow-x: hidden; }
+[class*="_sidebarCol"] [class*="_list"]::-webkit-scrollbar { width: 4px; height: 0; }
+[class*="_sidebarCol"] [class*="_list"]::-webkit-scrollbar-track { background: transparent; }
+[class*="_sidebarCol"] [class*="_list"]::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--bloom-accent) 30%, transparent);
+  border-radius: 999px;
+}
+[class*="_sidebarCol"] [class*="_list"]::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--bloom-accent) 55%, transparent);
+}
+
+/* 侧边栏成「面」：右侧一道冷光分界 + 向内的极淡渐变。
+   光靠 sidebar-fill 的底色差不足以让它跟消息区分开 —— 消息区有氛围渐变和气泡，
+   侧边栏只有一列文字，不给边界就显得平。分界线用 hairline（比实色 border 轻），
+   渐变只在顶部 120px 内，避免整列发灰。
+
+   v0.10.x（owner 反馈「没层次感」）：之前光带 1px + 18% alpha 在截图里几乎
+   看不见，侧栏和背景完全融成一片。这里两层：① 内部底色 4% accent 给容器
+   自己的"色"，与 body 区分；② 顶部 120px 氛围染。右侧冷光线交给下面的
+   ::after / ::before 双层（线 + 光晕），因为 box-shadow inset 会被 glass.ts
+   的 _sidebarCol 规则覆盖掉（cascade 顺序），改用伪元素才不会被吃掉。 */
+body[data-bloom-variant] [class*="_sidebarCol"] {
+  /* 宿主那条 0.5px 实线优先级更高，不加 !important 关不掉（实测覆盖后仍是 0.5px） */
+  border-right: 0;
+  background-color: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 96%);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--bloom-accent) 6%, transparent),
+    transparent 120px
+  );
+  background-repeat: no-repeat;
+  background-position: left top;
+  background-size: 100% 100%;
+}
+/* 侧栏右缘的冷光交给 glass.ts 的 box-shadow（向外投）——
+   这里曾用 ::after 画一条 18px 渐变，但侧栏 overflow:hidden，伪元素只能落在
+   容器内侧，看上去是「向内发光」，owner 反馈很奇怪。box-shadow 的外阴影不受
+   自身 overflow 裁剪，是唯一能真正往外散的做法。 */
+
+/* 底部设置区与会话列表之间补一道分隔，让「设置」不像是最后一条会话 */
+[class*="_sidebarCol"] [class*="_footer"] {
+  border-top: 1px solid var(--bloom-hairline);
+}
+
+/* 顶栏下沿冷光线 —— 标题区与消息流之间的分界，比实色 border 轻。
+   只给 tabs 这一条真正的分界线：_header 会同时命中 headerActions /
+   headerUtilities 等右上角子容器，给它们加投影会凭空多出几个浮块。 */
+header[class*="_header"] > div[class*="_tabs"] {
+  box-shadow: 0 1px 0 var(--bloom-hairline), 0 6px 20px -12px var(--bloom-glow);
+}
+
+/* 排队消息条（输入框上方那条待发送预览）。
+   DSH 原样式是「完全透明容器 + 70% 不透明白字」—— 在它自己的纯色底上尚可读，
+   但本主题给 body 铺了氛围渐变，背景不再均匀，这条就糊进背景里了。
+   这是氛围层带来的副作用，必须由本主题自己补一个实体容器兜住。
+
+   ⚠️ 必须用 :has(> [class*="_preview"]) 收窄，不能裸用 [class*="_dock"]：
+   GoalBar（dsh-client-ui-goal）的外层类名也叫「*_dock」，但它是**全宽布局容器**
+   （原生 width: calc(100% - 各种 inset)），真正该被看见的条是里面那个限宽居中的
+   「*_bar」（max-width: var(--dsh-composer-card-max-width)）。
+   裸选择器会把边框+毛玻璃画到那个全宽容器上——实测 dock 1810px 而 bar 只有 748px，
+   于是「进行中的目标」左右各露出一大截空壳边框，跟下方输入框完全不对齐。
+   QueueDock 一定有「_preview」子元素（就是下一条规则要上色的那个），拿它当判据最稳，
+   比写死 QueueDock 的哈希类名（会随 DSH 构建变）可靠。
+
+   ⚠️ 2026-11-14 owner：「排队消息也可以应用一下材质」，随后又反馈「之前的改动貌似没有用」。
+   实测确认前一版选择器**根本匹配不到**，真实结构（读自 QueueDock.module.css）是：
+
+     .F07MqG_dock          只有布局（width / margin / padding），**没有背景**
+       └ .F07MqG_panel     只有圆角与 overflow:hidden
+           ├ .F07MqG_panel::before   ← 背景与模糊画在这里：
+           │                            background: var(--dsw-specific-menu)
+           │                            backdrop-filter: var(--dsw-menu-backdrop-filter)
+           ├ .F07MqG_header / .F07MqG_list / .F07MqG_row …
+           └ .F07MqG_preview ← 只是行内文本元素，**不是 dock 的直接子级**
+
+   所以旧规则 div[class*="_dock"]:has(> [class*="_preview"]) 两处都不成立：
+   ① _preview 不是 dock 的直接子元素，:has(> …) 恒不命中；
+   ② 背景压根不在 _dock 上，是在 _panel::before 上。
+   现在按真实结构重写。 */
+div[class*="_dock"]:has([class*="_preview"]) {
+  /* 保持外壳自身的布局不变，只补圆角与描边（背景交给 panel::before） */
+  border-radius: 12px;
+}
+div[class*="_dock"]:has([class*="_preview"]) > div[class*="_panel"] {
+  border-radius: 12px 12px 0 0;
+}
+/* 真正承载材质的层：panel 的 ::before。用 !important 压过宿主的
+   --dsw-specific-menu（不透明 surface 色）与 --dsw-menu-backdrop-filter（未定义）。 */
+div[class*="_dock"]:has([class*="_preview"]) > div[class*="_panel"]::before {
+  background: var(--bloom-surface-fill, color-mix(in oklch, var(--dsw-alias-bg-layer-2, #fff), transparent 22%)) !important;
+  background-image: var(--bloom-surface-image, none) !important;
+  backdrop-filter: var(--bloom-surface-filter, blur(12px)) !important;
+  -webkit-backdrop-filter: var(--bloom-surface-filter, blur(12px)) !important;
+}
+/* 宿主给 panel 画了一圈 0.5px 描边（::after），换成主题的细线 */
+div[class*="_dock"]:has([class*="_preview"]) > div[class*="_panel"]::after {
+  border-color: var(--bloom-hairline, var(--dsw-alias-border-l1)) !important;
+}
+div[class*="_dock"] [class*="_preview"] {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 任务面板（TodoPanel，输入框上方那条「任务 5 已完成 · 1 进行中」）─────
+ * owner 2026-11-14：「还有任务这种也应用一下材质」。
+ *
+ * 它不是 _dock 结构，而是独立的一层：
+ *   <section data-testid="todo-panel" class="DXuOLW_root">
+ * 宿主给它的样式是
+ *     background: var(--dsw-specific-menu);          ← sf2 不透明 surface 色
+ *     backdrop-filter: var(--dsw-menu-backdrop-filter); ← 主题从未定义，走宿主默认
+ * 所以它一直是实色块，跟旁边已经上了材质的输入卡、排队条对不上。
+ *
+ * ⚠️ 用 data-testid 而不是 .DXuOLW_root：后者带构建 hash，DSH 每次发版都变。
+ *    （判据来源：dsh-client-ui-conversation 的 TodoPanel.js，其中
+ *      data-testid: "todo-panel" 是稳定语义标记。）
+ */
+html body[data-bloom-variant] [data-testid="todo-panel"] {
+  background-color: var(--bloom-surface-fill, var(--dsw-specific-menu)) !important;
+  background-image: var(--bloom-surface-image, none) !important;
+  backdrop-filter: var(--bloom-surface-filter, none) !important;
+  -webkit-backdrop-filter: var(--bloom-surface-filter, none) !important;
+  box-shadow: var(--bloom-surface-edge, none);
+  border: 0;
+}
+
+/* ── 三条叠层的宽度与圆角统一 ──────────────────────────────────────────
+ * owner 2026-11-14：「修改文件和任务/消息队列的样式貌似不是很统一？」
+ *
+ * 实测三条的材质（填充/模糊/渐变）其实已经一致，真正不统一的是**几何**：
+ *
+ *   输入卡  width: var(--dsh-composer-card-max-width)         ← 基准
+ *   任务条  width: 100% - clearance×2 - dock-inset×4          ← 比基准窄一截
+ *   排队条  width: 100% - clearance×2 - dock-inset×2          ← 又是另一个宽度
+ *
+ * 三者减掉的 inset 数量不同（4 / 2 / 0），所以左右内缩量各异，叠在一起
+ * 边缘就参差不齐。这里把任务条与排队条都对齐到输入卡的宽度基准，
+ * 并统一圆角（输入卡是 16px）。
+ *
+ * 排队条保持「上圆下方」：它和输入卡是上下相邻拼接的，
+ * 下方两个角如果也圆起来，接缝处会露出两道缺口。
+ */
+html body[data-bloom-variant] [data-testid="todo-panel"] {
+  /* 与输入卡同宽：只减 side-clearance，不减 dock-inset */
+  width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance)) !important;
+  max-width: var(--dsh-composer-card-max-width) !important;
+  margin-inline: auto !important;
+  border-radius: 16px !important;
+}
+html body[data-bloom-variant] div[class*="_dock"]:has([class*="_preview"]) {
+  width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance)) !important;
+  max-width: var(--dsh-composer-card-max-width) !important;
+  margin-inline: auto !important;
+  padding-inline: 0 !important;
+}
+/* 排队条内部那块 panel 铺满，圆角与输入卡上沿对齐 */
+html body[data-bloom-variant] div[class*="_dock"]:has([class*="_preview"]) > div[class*="_panel"] {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* 消息卡 / 工具调用行：只给轻描边，不给阴影 —— 数量多（一次会话 30+ 个），
+   加长距阴影会把整个消息流糊成一片。全部限定 div，否则会命中 SVG 元素。 */
+/* 工具调用行：常态不描边，hover 才亮起。
+   常驻边框有两个毛病：① 同为工具行，可展开的 Bash 有框、Read/Edit 没框，视觉不一致；
+   ② 折叠行实测 748×26，画成圆角框又扁又长，且边框贴着内容区边缘而行内图标有内缩，
+   看起来像个输入框。保留 transparent 占位是为了 hover 时不发生布局跳动。
+
+   ⚠️ 2026-10-02：DSH 0.2.0 里 _toolRow 匹配 0 个元素（scripts/dsh-drift.mjs 报出来的），
+   新名候选是 _toolChanges。用 :is() 并列，权重不变（:is 取最具体项，仍等于单个 [class*=]）。
+   两个都写是因为旧构建（Web UI / 更早的桌面版）仍在用老名。 */
+div[class*="_card"],
+div:is([class*="_toolRow"], [class*="_toolChanges"]),
+div[class*="_panel"] {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+/* ── 消息卡 / 工具行的 hover 提亮 ─────────────────────────────────────
+ *
+ * ⚠️ 2026-11-14 owner：「我聚焦回答会显示弹窗没有材质，然后我聚焦弹窗后变透明了」。
+ *
+ * 病根在这一条：它给所有 *_card 的 hover 换成 rgba(morandi, 0.05)
+ * —— 5% 不透明度，几乎全透。对消息流里的卡片没问题（背后是纯页面底色），
+ * 但会话条目的**悬浮预览卡**（_card_l6gf9_9，在 _exits_ 浮层里）也被它命中，
+ * 于是鼠标一移上去，本来已经上好的材质底（oklch(.../0.58) + blur(24px)）
+ * 被替换成 5% 透明色 —— 表现就是「聚焦后整个弹窗变透明」。
+ *
+ * 这里先给「_exits_ 浮层内的卡片」单独钉死材质（特异性更高，见下方独立规则），
+ * 让 hover 那条打不过它。不用 :not(... *) 那种复杂 :not，兼容性差。
+ */
+div[class*="_card"]:hover,
+div:is([class*="_toolRow"], [class*="_toolChanges"]):hover {
+  border-color: var(--bloom-hairline);
+  background: rgba(var(--bloom-morandi), 0.05);
+}
+/* 浮层内的卡片（会话悬浮预览卡）不参与上面那条 hover 提亮：
+   它已经有材质底，hover 时只允许描边变化，底色必须稳住。
+   特异性 (0,3,1) + !important，稳压上面的 (0,2,1)。 */
+html body[data-bloom-variant] [class*="_exits_"] div[class*="_card"] {
+  background-color: var(--bloom-surface-fill, rgb(44, 44, 46)) !important;
+  background-image: var(--bloom-surface-image, none) !important;
+  backdrop-filter: var(--bloom-surface-filter, none) !important;
+  -webkit-backdrop-filter: var(--bloom-surface-filter, none) !important;
+  border-color: transparent;
+}
+/* 展开态：DSH 的终端区（_terminal）自带 1px 边框 + 12px 圆角，
+   外层 card 再描一圈就是两个几乎同尺寸的圆角框相套（实测 439px 套 377px）＝框中框。
+   展开后连 hover 边框也不要。 */
+div[class*="_card"]:has([class*="_terminal"]),
+div[class*="_card"]:has(pre),
+div[class*="_card"]:has([class*="_terminal"]):hover,
+div[class*="_card"]:has(pre):hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+
+/* ── 输入区聚焦光 ──────────────────────────────────────────────
+   2026-11-14 owner：「触发时机不应该是我打字的时候触发，而是在聊天框被聚焦时
+   才触发，退出聊天框后再播放动效退出而不是定时器检测我一段时间没打字退出」。
+
+   状态现在是**焦点驱动**的（见 src/typing.ts）：composer 拿到焦点 → 属性在，
+   焦点离开 → 属性撤掉。所以这里的动画必须满足两件事：
+
+     ① 聚焦期间**只跑一次**，不做 infinite 循环。
+        原来的 infinite 扫光就是「晃眼」的根源：属性在就一直扫，属性一撤一加
+        又从 0% 重来一道 —— 用户看到的是不停地闪。现在常驻的是一个静止的光晕，
+        进场只扫一道就停在终点。
+
+     ② 退出时**有过渡**。属性撤掉的瞬间 opacity 从 1 → 0，走 transition 淡出；
+        动画同时被移除，所以不会出现「淡到一半又被 infinite 拽回去」。
+
+   reduced-motion 下不做位移，只保留淡入淡出（那是状态提示，不是装饰）。 */
+div[class*="_composer"] div[class*="_card"]::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; opacity: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71) 34%, transparent) 42%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71) 16%, transparent) 58%,
+    transparent 100%
+  );
+  background-size: 260% 100%;
+  background-position: 120% 0;
+  /* 淡出：属性撤掉后 .42s 收干净。淡入同理，由同一条 transition 管。 */
+  transition: opacity .42s var(--bloom-ease, ease);
+}
+body[data-bloom-typing="true"] div[class*="_composer"] div[class*="_card"]::after {
+  opacity: 1;
+  /* 进场扫一道，停在终点；不再 infinite。 */
+  background-position: -20% 0;
+  animation: dsh-bloom-typing-sweep 1.15s var(--bloom-ease, ease) 1 forwards;
+}
+@keyframes dsh-bloom-typing-sweep {
+  from { background-position: 120% 0; }
+  to   { background-position: -20% 0; }
+}
+/* [LES-21] 浅色聚焦光：左上角光晕，不做横向扫光（扫光带是深色的流星，浅色上是脏色块） */
+body[data-bloom-variant]:not([data-ds-dark-theme]) div[class*="_composer"] div[class*="_card"]::after {
+  background: radial-gradient(130% 150% at 16% 0%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71) 9%, transparent) 0%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71) 4%, transparent) 36%,
+    transparent 70%);
+  background-size: 100% 100%;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-bloom-typing="true"] div[class*="_composer"] div[class*="_card"]::after {
+    animation: none; background-position: 50% 0;
+  }
+}
+
+/* 输入卡片：整个界面的视觉主角，给足纸感。
+   必须限定在 composer 内 —— 裸的 [class*="_card"] 会命中 30+ 个消息卡片，
+   把长距阴影糊得到处都是。 */
+div[class*="_composer"] div[class*="_card"] {
+  border: 1px solid var(--bloom-hairline);
+  border-radius: 16px;
+  /* 三层：顶部内高光（模拟光从上方打来）+ 长距柔影 + 外侧冷辉 */
+  box-shadow:
+    inset 0 1px 0 rgba(var(--bloom-morandi), 0.14),
+    var(--bloom-shadow),
+    0 0 24px -14px var(--bloom-glow);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+div[class*="_composer"] div[class*="_card"]:focus-within {
+  border-color: var(--bloom-hairline-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--bloom-morandi), 0.2),
+    var(--bloom-shadow),
+    0 0 0 2px var(--bloom-glow);
+}
+
+/* 消息气泡：柔和圆角 + 近距阴影，脱离"贴在背景上"的平面感。
+   限定 div：DSH 的全局 Tooltip 是 span[class*="_bubble"]（见 glass.ts 同名注释），
+   不能吃到气泡的圆角/阴影/入场动画 —— 尤其动画：带 !important 的 bloom-fade-up
+   会在 420ms 里盖掉 tooltip 的定位 transform（[data-side=right] 的 translateY(-50%)），
+   气泡先偏移再跳回，也是"提示看不清"的一部分。 */
+div[class*="_bubble"] {
+  border-radius: 14px;
+  /* v0.15：纸感厚度——顶 1px 高光 + 已有短距阴影 = 上下对照。
+     高光透明度刻意低于侧栏(0.16 vs 0.22)：气泡面积大、密集出现，
+     高光过亮会变成「锡纸」反光，0.16 是「有光、不抢戏」的甜区。 */
+  box-shadow:
+    inset 0 1px 0 rgba(var(--bloom-morandi), 0.16),
+    var(--bloom-shadow-sm);
+}
+
+/* TurnTriggerNodeView uses these aliases for its root and hover state.
+   Resolve them from the active palette so a variant switch repaints the card. */
+body[data-bloom-variant] [data-turn-trigger] {
+  --dsw-alias-turn-trigger-bg: color-mix(in oklch, var(--bloom-accent) 6%, var(--dsw-alias-bg-layer-1));
+  --dsw-alias-turn-trigger-bg-hover: color-mix(in oklch, var(--bloom-accent) 10%, var(--dsw-alias-bg-layer-1));
+}
+/* ReasoningRow's expanded sticky disclosure header uses bg-base natively.
+   An opaque palette surface avoids both the default block (#66) and text
+   showing through the sticky header while the reasoning body scrolls. */
+body[data-bloom-variant] [data-variant="think"][data-expanded] [data-open] [data-disclosure-header] {
+  background: color-mix(in oklch, var(--bloom-accent) 4%, var(--dsw-alias-bg-layer-1));
+}
+
+/* ═══ 3. Markdown 排版质感 ═════════════════════════════════════════
+   照搬原版手法：标题渐变短横、hr 两端消隐、引用块左侧主色条。 */
+[class*="_markdown"] h1,
+[class*="_markdown"] h2,
+[class*="_markdown"] h3 {
+  position: relative;
+}
+[class*="_markdown"] h1::after,
+[class*="_markdown"] h2::after,
+[class*="_markdown"] h3::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -0.34em;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--bloom-morandi), 0.45), transparent);
+}
+[class*="_markdown"] h1::after { width: 76px; height: 3px; }
+[class*="_markdown"] h2::after { width: 56px; }
+[class*="_markdown"] h3::after { width: 40px; background: linear-gradient(90deg, rgba(var(--bloom-morandi), 0.28), transparent); }
+
+hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--bloom-hairline-strong), transparent);
+}
+
+blockquote {
+  border-left: 3px solid rgba(var(--bloom-morandi), 0.55);
+  border-radius: 12px;
+  background: rgba(var(--bloom-morandi), 0.07);
+  box-shadow: var(--bloom-shadow-sm);
+}
+
+/* 代码：内联块用莫兰迪淡底（变量已在 alias 层修正为背景色），
+   块级代码加冷光描边 + 圆角，消除方角感 */
+code {
+  border-radius: 6px;
+}
+
+/* 代码块：描边/阴影只能给「有实色背景的那一层」——DSH 的结构是
+     div.md-code-block（实色底 + 圆角）> div > pre.shiki（背景透明）
+   曾经把 border/box-shadow 加在 pre 上：两层各画一个 12px 圆角框 = 框中框，
+   而且 pre 背景透明，阴影直接投进容器内部形成一圈脏边。
+   md-code-block 是 DSH 的全局类名（非 CSS Modules hash），可以稳定引用。 */
+.md-code-block {
+  border: 1px solid var(--bloom-hairline);
+  box-shadow: var(--bloom-shadow-sm);
+  overflow: hidden;
+}
+.md-code-block pre,
+pre.shiki {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* 兜底：不在 md-code-block 里的裸 pre 才自己描边 */
+pre:not(.shiki) {
+  border-radius: 12px;
+}
+pre code {
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 表格：严格限定在 [_tableScroll] 容器内，只动 markdown 渲染的聊天表格，
+   不影响 DSH 会话列表（Y0dWHa_table）这类其他用途的 <table>。
+   DSH 原生规则：th/td 各有一条 border-bottom，th:first-child 与 td:first-child
+   的 padding-left:0（让首列对齐正文），空 cell 仍撑出 100px min-width。
+   三个肉眼短板：① 表头只有加粗无底色，与主体混淆；② 无列分隔，像列表不像表；
+   ③ 空 cell 100px 留白让残缺行（如 P1 状态列空）看着"半残废"。
+
+   ⚠️ 2026-10-02：DSH 0.2.0 把容器名从 _tableScroll 改成了 _tablePane
+   （scripts/dsh-drift.mjs 报出来的：这个语义名在 0.2.0 里匹配 0 个元素，
+   也就是下面这一整块表格样式一直在静默失效）。用 :is() 并列新旧名 ——
+   :is() 的权重取最具体的那一项，和单个 [class*=] 相同，所以这次改动
+   没有动任何规则的权重。 */
+:is([class*="_tableScroll"], [class*="_tablePane"]) {
+  /* #76/#62: the scroll viewport may be wider than its table (native wide-table
+     lead padding). Paint the table, otherwise this creates an empty framed tail. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  /* 2026-10-24 · #52/#48：容器被主题加了边框圆角，但 DSH 0.2.0 把 _tableScroll
+     改名 _tablePane 后不再保证原生横向滚动 —— 宽表格直接戳穿聊天气泡边界（#52），
+     多列表格越界后边框圆角失去裁切、格线在角部戳出读作「变形」（#48）。
+     overflow-x:auto 同时给回「滚动能力」和「圆角裁切」（auto 会裁剪并尊重 radius，
+     hidden 只裁不滚会废掉滚动，两个都不能用错）。
+     注意：overflow-x 非 visible 时另一轴的 visible 会被强制成 auto，
+     对纯展示表格无副作用。旧名 _tableScroll 原生已是滚动容器，重复声明无害。 */
+  overflow-x: auto;
+}
+
+/* 上面那条会在层叠里输给 DSH 自己的 .md-table-wide 修饰类（实测 2026-10-24：
+   ._tableScroll_哈希.md-table-wide => overflow-x:hidden，权重 (0,2,0) > 单属性选择器
+   的 (0,1,0)，宽表被无声裁掉右半边）。双写属性选择器把权重抬到 (0,2,0) 打平，
+   再靠注入序取胜 —— 插件 <style> 在 DSH <link> 之后注入，平权重时后者赢，
+   这也是本主题其它同权重覆盖能生效的同一前提。hidden 改 auto 对「本就放得下」
+   的表格零影响（无溢出就没有滚动条），只在内容实在放不下时把「裁掉」换成「可滚」。 */
+[class*="_tableScroll"][class*="_tableScroll"],
+[class*="_tablePane"][class*="_tablePane"] {
+  overflow-x: auto;
+}
+/* DSH 0.2.1: >=4 columns uses md-table-wide, otherwise tableFill.
+   Keep the wide branch intrinsic, including short four-column tables (#62).
+   Match the native hover/focus specificity so its hidden/scroll + padding
+   swap cannot change the viewport height or expose a bottom white band (#76). */
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]).md-table-wide,
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]).md-table-wide:is(:hover, :focus-visible) {
+  overflow-x: auto;
+  padding-bottom: 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+/* [LES-08b] 会话 tab 轨迹区滚动条：几何保留，滑块平时全透明，悬停才显色 */
+body[data-bloom-variant] main [class*="_scroll"]::-webkit-scrollbar-thumb,
+body[data-bloom-variant] div[class*="_tableScroll"]::-webkit-scrollbar-thumb,
+body[data-bloom-variant] div[class*="_tablePane"]::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+body[data-bloom-variant] main [class*="_scroll"]:hover::-webkit-scrollbar-thumb,
+body[data-bloom-variant] div[class*="_tableScroll"]:hover::-webkit-scrollbar-thumb,
+body[data-bloom-variant] div[class*="_tablePane"]:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 55%);
+}
+
+/* [LES-08] 宽表滚动条：几何恒定，平时透明，悬停或聚焦才显色 */
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]).md-table-wide {
+  scrollbar-color: transparent transparent;
+}
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]).md-table-wide:is(:hover, :focus-visible) {
+  scrollbar-color: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 62%) transparent;
+}
+:is([class*="_tableScroll"], [class*="_tablePane"]) > table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--bloom-hairline);
+  border-radius: 10px;
+  background: rgba(var(--bloom-morandi), 0.02);
+  overflow: clip;
+}
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]).md-table-wide > table {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+}
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]):not(.md-table-wide) > table {
+  width: 100%;
+  max-width: none;
+}
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) th,
+body[data-bloom-variant] :is([class*="_tableScroll"], [class*="_tablePane"]) td {
+  border-color: var(--bloom-hairline);
+  border-right-width: 1px;
+  border-right-style: solid;
+  border-bottom-width: 1px;
+}
+:is([class*="_tableScroll"], [class*="_tablePane"]) th:last-child,
+:is([class*="_tableScroll"], [class*="_tablePane"]) td:last-child { border-right: 0; }
+:is([class*="_tableScroll"], [class*="_tablePane"]) tr:last-child th,
+:is([class*="_tableScroll"], [class*="_tablePane"]) tr:last-child td { border-bottom: 0; }
+:is([class*="_tableScroll"], [class*="_tablePane"]) th:first-child,
+:is([class*="_tableScroll"], [class*="_tablePane"]) td:first-child { padding-left: 16px; }
+:is([class*="_tableScroll"], [class*="_tablePane"]) thead th {
+  background: rgba(var(--bloom-morandi), 0.10);
+  font-weight: 600;
+  border-bottom-width: 1px;
+  border-bottom-color: var(--bloom-hairline-strong);
+  color: var(--dsw-alias-label-secondary, currentColor);
+}
+:is([class*="_tableScroll"], [class*="_tablePane"]) tbody tr:hover { background: rgba(var(--bloom-morandi), 0.06); }
+/* 空 cell 视觉降权：透明度 0.35，省得缺值列（P1 状态空）显得行"断了一截" */
+:is([class*="_tableScroll"], [class*="_tablePane"]) td:empty { opacity: 0.35; }
+
+/* 推理中的「深度求索中，用时 1分30秒」：DSH 原生 shimmer 直接使用 DeepSeek 静态蓝。
+   Bloom 为每个变体提供主色及两种邻近色，做成克制的三色光谱流动：有 Gemini
+   式的生命力，但色相始终属于当前主题。以语义后缀而非 CSS Module hash 匹配。
+
+   ⚠️ 2026-09-29（用户「原来好看的渐变动效没了」）：老选择器 [class*="_turnStatus"]
+   在当前 DSH 上**命中 0 个元素** —— DSH 把这个组件改名了，现在是
+   <button data-turn-process> > span._label，跑完和跑着共用同一个元素。
+   失配是静默的：不报错、门禁全绿，只是渐变没了（这正是本文件头部写的
+   「失配时退回纯色」那条安全降级的代价）。
+   新的钩子用 data-turn-process（宿主语义属性，不带 hash，比类名稳）；
+   「跑完的不闪」由 dom.ts 的 markLiveTurn() 打 data-bloom-live-turn 解决 ——
+   跑完和跑着是同一个元素，只有文本在变能区分。
+   老选择器保留：DSH 回退到旧构建时它仍然生效。
+
+   ⚠️ 两条分开写、!important 只留给老选择器：新钩子那条特异度已经是
+   (0,4,2)（body + 属性 + button + 两个 data 属性 + 类名子串），实测压得过
+   DSH 的 .l_V-RG_label (0,1,0)，不需要 !important；加了就撞 !important 预算棘轮
+   （check.mjs 的 IMPORTANT_BUDGET），而那个预算的存在就是为了逼人回头想
+   「有没有更省的办法」。 */
+body[data-bloom-variant] button[data-turn-process][data-bloom-live-turn] [class*="_label"] {
+  background-image: linear-gradient(
+    110deg,
+    var(--bloom-motion-1) 0%,
+    var(--bloom-motion-2) 24%,
+    var(--bloom-motion-3) 43%,
+    var(--bloom-motion-1) 60%,
+    var(--bloom-motion-2) 78%,
+    var(--bloom-motion-3) 100%
+  );
+  background-size: 260% 100%;
+  /* 新组件不再自带 text-fill 那套：实测 label 的 -webkit-text-fill-color 是
+     实色（label 色），只给渐变不裁字的话，渐变整个看不见。所以三件套要一起写。 */
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: bloom-deep-dive-spectrum 3.6s ease-in-out infinite alternate;
+}
+/* 老组件：DSH 旧构建里这个 shimmer 自带 !important，只能跟着加 */
+body[data-bloom-variant] [class*="_turnStatus"]:not([class*="_turnStatusClock"]) {
+  background-image: linear-gradient(
+    110deg,
+    var(--bloom-motion-1) 0%,
+    var(--bloom-motion-2) 24%,
+    var(--bloom-motion-3) 43%,
+    var(--bloom-motion-1) 60%,
+    var(--bloom-motion-2) 78%,
+    var(--bloom-motion-3) 100%
+  );
+  background-size: 260% 100% !important;
+  animation: bloom-deep-dive-spectrum 3.6s ease-in-out infinite alternate !important;
+}
+[class*="_turnStatusClock"] {
+  color: color-mix(in oklch, var(--bloom-motion-2) 58%, var(--dsw-alias-label-caption)) !important;
+  -webkit-text-fill-color: color-mix(in oklch, var(--bloom-motion-2) 58%, var(--dsw-alias-label-caption)) !important;
+}
+@keyframes bloom-deep-dive-spectrum {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+/* ═══ 在跑的步骤文字（"准备运行命令…" / "运行命令" / 思考中的标题）═════════
+ *
+ * DSH 自己有一套 shimmer：span[data-text-shimmer]（在跑才挂这个属性），
+ * 用 currentColor 画一条 50% 透明的横带扫过文字。效果本身是对的，问题是
+ * **颜色是继承来的灰**（label-caption）—— 放在 Bloom 的暗底上就是一道灰影，
+ * 主题色一点都进不去。
+ *
+ * 所以这里只换颜色、不换动作：几何、时长、缓动、keyframes 全部沿用 DSH 的
+ * （background-size 250% / position 100%→0% / spread 变量），把 currentColor
+ * 换成 Bloom 的 motion 三色 —— 暗色下是一道青→蓝→紫的高光扫过，亮色下自动
+ * 换成对应的暗色档（motion-* 本身就随明暗翻转）。
+ * 换动作等于和 DSH 的动画打架：它的 keyframes 名带 hash，改一次断一次。
+ *
+ * ⚠️ 钩子用 [data-text-shimmer] 而不是任何类名：这是宿主给的语义属性，
+ * 不带 hash、不随版本改名（对照上面 [class*="_turnStatus"] 的教训）。
+ * 实测它在跑的时候才出现，跑完就没了 —— 判断「在跑」不需要我们再写一套。 */
+body[data-bloom-variant] [data-text-shimmer] {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--bloom-motion-1, #6b8f71) 62%, transparent) calc(50% - var(--dsh-text-shimmer-spread, 24px)),
+    var(--bloom-motion-2, #6b8f71) 50%,
+    color-mix(in oklch, var(--bloom-motion-3, #6b8f71) 62%, transparent) calc(50% + var(--dsh-text-shimmer-spread, 24px))
+  );
+  /* 文字被 background-clip:text 裁出来后没有阴影能力，用 filter 补一层外辉 ——
+     现代做法（drop-shadow 跟随裁剪后的字形），比 text-shadow 干净。
+     透明度压到 72%：这是「亮着」而不是「发烫」，亮色下会自动更淡。 */
+  filter: drop-shadow(0 0 10px color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 72%));
+}
+/* 正在跑的那一步：不加底色、不加描边。
+   曾经给它加过「7% accent 底 + 一道发丝边」的胶囊，owner 一眼否掉
+   （2026-09-29：「为啥你要加背景？」）—— 和本文件 §新建会话按钮 写的是同一条
+   规矩：莫兰迪靠淡染色区分，不靠色块；状态靠颜色和动效说话，不靠盒子。
+   盒子还会和消息流里其它圆角元素撞形，看着像另一个控件。
+   真正的信号是这三样：文字的高光扫过 + 外辉、图标染成 accent 并呼吸。 */
+body[data-bloom-variant] button:has(> [data-text-shimmer]) [data-step-process-icon] {
+  color: var(--bloom-accent, #6b8f71);
+  animation: bloom-live-breathe 1.8s ease-in-out infinite;
+}
+@keyframes bloom-live-breathe {
+  0%, 100% { opacity: 0.72; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* DSH 自己会把 shimmer 关掉，这里补齐：颜色保留（别让文字变成纯灰），动效归零。
+     ⚠️ 这一段一条 !important 都不加：里面的选择器跟常态那几条完全相同
+     （(0,2,0) / (0,3,1)），而本段在它们之后，天然压得住；
+     DSH 那边的 (0,1,0) 也压得过。加了只会撞 IMPORTANT_BUDGET 棘轮。 */
+  body[data-bloom-variant] [data-text-shimmer] {
+    animation: none;
+    background-position: 50% center;
+    filter: none;
+  }
+  body[data-bloom-variant] button:has(> [data-text-shimmer]) [data-step-process-icon] {
+    animation: none;
+  }
+  body[data-bloom-variant] button[data-turn-process][data-bloom-live-turn] [class*="_label"],
+  [class*="_turnStatus"]:not([class*="_turnStatusClock"]) {
+    animation: none !important;
+    background-position: 50% 0 !important;
+  }
+}
+
+/* 选中文本：原版用 accent 混 80%，比 DSH 默认的 85% 更实，能看清 */
+::selection {
+  background: color-mix(in oklch, var(--bloom-accent), transparent 78%);
+}
+
+/* ═══ 4. 裸露的 <think> 标签 ═══════════════════════════════════════
+   由 markThinkTags() 打标（见该函数注释：这是 workaround，根因在 LLM 适配层）。
+   标签行整行隐藏 —— 实测它们各自独占段落，隐藏不丢内容；
+   标签之间的思考内容只降权、不隐藏，用冷光竖线标出，信息仍可读。 */
+[data-bloom-think] {
+  display: none !important;
+}
+/* 左侧冷光竖线 + 降低透明度。
+   ⚠️ 竖线错位的坑：思考块是一串平铺的兄弟元素（p / ul / ol / h3 / div），各标签
+   默认 margin-left 不同（实测 p 被置为 0、ul 为 2px），不强制归零就会让竖线
+   错开 2px、连不成一条直线。所以 margin-left 必须 !important 压平。
+   另：用背景色块代替竖线会让每段变成一张「卡片」，且色块边缘直接贴住文字，
+   观感更差 —— 竖线 + 内边距才是对的做法。 */
+[data-bloom-think-body] {
+  opacity: 0.62;
+  border-left: 2px solid var(--bloom-hairline);
+  margin-left: 0 !important;
+  padding-left: 14px;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+[data-bloom-think-body]:hover {
+  opacity: 0.92;
+  border-left-color: var(--bloom-hairline-strong);
+}
+/* 列表要保留编号/圆点的缩进，否则 padding 被覆盖后编号会贴到竖线上 */
+ul[data-bloom-think-body],
+ol[data-bloom-think-body] {
+  padding-left: 38px;
+}
+
+/* ═══ 6. 微交互动效系统（v0.5.0）══════════════════════════════════
+   原则（导师批注）：
+   ① 只为「状态反馈」动：hover=可点、active=按下、选中=切换；
+   ② 统一时长/缓动走 token（反馈 130ms、常规 200ms、大过渡 280ms；
+      ease-out 入场、通用 ease），全站一致，否则就是「东一块西一块」；
+   ③ 只动 transform/opacity（GPU 合成不动布局），backdrop-filter 很贵不放进 transition；
+   ④ prefers-reduced-motion 一律降级成瞬间（无动画）。
+   别加「为了炫而炫」的常驻动画——那个会回到「脏/四不像」。 */
+body {
+  --bloom-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --bloom-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 回弹曲线：入场末端微微过冲再落回（.34,1.56,.64,1 是 Material 的经典回弹）。
+     只给「有明确触发动作」的过渡用 —— 面板滑入、按钮按下。
+     纯 hover 反馈仍走 --bloom-ease：回弹用在 hover 上会显得黏。 */
+  --bloom-ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --bloom-dur-fast: 130ms;
+  --bloom-dur: 200ms;
+  --bloom-dur-slow: 280ms;
+}
+
+/* [LES-13] 侧栏会话行：只淡染与按下微缩，不做位移，避免撑出横向滚动条 */
+[class*="_sidebarCol"] [role="treeitem"],
+[class*="_sidebarCol"] [class*="_sessionRow"] {
+  transition:
+    background var(--bloom-dur-fast) var(--bloom-ease),
+    transform var(--bloom-dur-fast) var(--bloom-ease);
+}
+[class*="_sidebarCol"] [role="treeitem"]:active { transform: scale(0.996); }
+
+/* [LES-02] 侧栏分组：去硬边框，紧凑 6px 留白避免工作区列表过度稀疏 */
+[class*="_sidebarCol"] [class*="_groupSection"] + [class*="_groupSection"] {
+  margin-top: 6px;
+}
+
+/* 会话行：圆角 + hover 淡染，靠留白区分，不描边不画网格 */
+[class*="_sidebarCol"] [class*="_sessionRow"] {
+  position: relative;
+  border-radius: 8px;
+}
+[class*="_sidebarCol"] [class*="_sessionRow"]:hover {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 93%);
+}
+
+/* [LES-02] 当前选中行：8% 极淡主色染色，不加生硬边框与高亮竖条 */
+[class*="_sidebarCol"] [class*="_sessionRow"][class*="_selected"],
+[class*="_sidebarCol"] [class*="_sessionRow"][aria-selected="true"],
+[class*="_sidebarCol"] [role="treeitem"][aria-selected="true"] {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 92%);
+}
+
+/* 输入卡片 hover：只提描边，不抬、不换阴影。
+   v0.15 曾在这里加 transform: translateY(-1px) + box-shadow: var(--bloom-shadow)
+   想让卡片"浮起来"，实际两半都不对：
+   ① box-shadow 从没生效 —— GLASS_CSS 的 body[data-bloom-variant] … _card
+      特异性 (0,3,3) 高于这里的 :hover (0,3,2)，阴影永远是玻璃那套；
+   ② transform 生效了，但它违反 glass.ts 侧栏注释里的判据：输入卡的
+      conversation.input.overlay 槽会注入 fixed 元素（dsh-convmap，issue #15），
+      transform 会让卡片成为它们的 containing block —— hover 时浮层跟着错位。
+      而且输入框是打字的地方，不是按钮，光标停上去就抖一下只会分神。 */
+div[class*="_composer"] div[class*="_card"] {
+  transition:
+    border-color var(--bloom-dur) var(--bloom-ease),
+    box-shadow var(--bloom-dur) var(--bloom-ease);
+}
+div[class*="_composer"] div[class*="_card"]:hover {
+  border-color: var(--bloom-hairline-strong);
+}
+
+/* 主题自己的按钮：按下微缩（明确「点到了」） */
+.dsh-bloom-trigger:active,
+.dsh-bloom-option:active,
+[class*="_sidebarCol"] button:active { transform: scale(0.985); }
+
+/* ═══ 焦点环兜底：统一成主题色 ═══
+   DSH 有些控件（例如设置面板右上角的关闭按钮）没定义自己的 focus 样式，
+   于是露出**浏览器默认**的 focus ring —— Chrome 暗色下是一圈亮蓝
+   rgb(153,200,255)，跟 8 套莫兰迪配色全都打架（用户实拍反馈里那个蓝圈）。
+   注意它不是 DSH 的 token，改 --dsw-* 改不到，只能靠这条兜底。
+
+   用 :focus-visible 而不是 :focus —— 只在键盘导航时出现，鼠标点击不显示，
+   这也是 WCAG 2.4.7「焦点可见」的正确做法：焦点依然清晰，只是跟着主题走。 */
+:focus-visible {
+  outline: 2px solid var(--dsw-focus-ring-color, var(--bloom-accent)) !important;
+  outline-offset: 2px;
+}
+
+/* 重新截图/使用观察时可平滑淡入的低频面板入场（默认不绑到常驻元素上） */
+@keyframes bloom-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ═══ 6.5 空状态视觉锚点 (v0.10.x) ═══════════════════════════════════
+ *
+ * owner 反馈「没层次感」：空状态下「探索未至之境」一行字飘在苍白画布上，
+ * 眼睛找不到着陆位置。这里在 scrollBody 没有气泡时（即空状态），在中央
+ * 投一团主题色光晕 + 慢呼吸，给视觉一个焦点。光晕跟 message 流重叠的
+ * 概率低（消息堆在顶部），不会污染正常态。
+ *
+ * selector 限制条件：\`:not(:has(div[class*="_bubble"]))\` 确保只在没消息时出现；
+ * 有消息时这条规则不匹配，::before 不渲染。\`:has()\` Chrome 105+/Safari 15.4+。
+ * 限定 div 同样是为了不把 tooltip（span）算进"有消息"。 */
+[class*="_scrollBody"] { position: relative; }
+[class*="_scrollBody"]:not(:has(div[class*="_bubble"]))::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    42% 32% at 50% 48%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 86%) 0%,
+    color-mix(in oklch, var(--bloom-aurora-stream-2), transparent 92%) 35%,
+    transparent 68%
+  );
+  animation: bloom-anchor-breathe 4.2s ease-in-out infinite;
+}
+/* 2026-09-27 修 #32「空状态下页面持续上下浮动」：
+   原来 50% 帧是 transform: scale(1.05)。这块 ::before 用 inset:0 铺满整个
+   消息区（实测 900px 高），scale 以中心为原点，垂直方向上下各动约 11px；
+   4.2s infinite 且不依赖任何操作，视线读成「画布自己在抖」而不是呼吸。
+   改成只动 opacity：零位移、只走合成器，呼吸感靠明暗传达。
+   想找回一点尺寸脉动，scale 上限别超过 1.005（900px 上约 ±2px）。 */
+@keyframes bloom-anchor-breathe {
+  0%, 100% { opacity: 0.72; }
+  50%      { opacity: 1; }
+}
+
+/* ═══ 7. 全站统一入场系统 (v0.10.x) ═════════════════════════════════
+ *
+ * owner 反馈：「除了深度求索中的文字有动效外，别的几乎是没有任何吸引到我的动画」
+ * ——所以这一节专门把页面"活起来"：消息气泡/工具行/侧栏/顶栏首次入场都走
+ * 同一条 keyframe，长度/缓动全走 §6 的 token；只动 opacity + transform，
+ * prefers-reduced-motion 下由下方媒体查询清零。
+ *
+ * 为什么用 \`animation\` 而不是 transition + \`:not([hidden])\`：
+ *   后者在 React 里反复 toggle hidden 时 transition 不会重新计算；
+ *   且「元素插入」这件事 transition 表达不了。\`animation\` 在元素 mount 那一刻
+ *   唯一一次触发，正好对应「第一次出现在视野中」的语义；React 重渲染复用
+ *   DOM 节点时也不会重放，不会污染正常状态切换。
+ */
+@keyframes bloom-fade-up {
+  /* v0.15：入场位移从 16 → 12px——320ms 配合 12px 是行业甜区，
+     16px 配合 320ms 会"顿"一下才到位。形状不变，只是更轻。 */
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bloom-fade-down {
+  /* v0.15：顶栏从顶部滑下，从 -12 → -8px，配合更短的 200ms 让"开页"更利落。 */
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 消息气泡 / 工具调用行 / 滚动体内的卡片 —— 整页停留时间最长的地方。
+   气泡限定 div（span 的 _bubble 是全局 Tooltip，动画会盖掉它的定位 transform，
+   见 §3 气泡圆角处的注释）。
+   \`:not(:has(...))\` 排除含终端 / 代码块的卡：它们是「展开后才有」的元素，
+   跟着外层一起进，单独动会让代码块在父卡里飘。
+   !important 必要：DSH 在这些元素上有自己的 \`animation\`（比如呼吸 loader），
+   后注入的会赢；用 !important 让 Bloom 的入场动画压过它。 */
+div[class*="_bubble"],
+div:is([class*="_toolRow"], [class*="_toolChanges"]),
+div[class*="_scrollBody"] > div[class*="_card"]:not(:has([class*="_terminal"])):not(:has(pre)) {
+  animation: bloom-fade-up 240ms var(--bloom-ease-out) backwards !important;
+}
+/* 侧栏会话行：页面打开时整组淡入（一次性，不是循环） */
+[class*="_sidebarCol"] [role="treeitem"] {
+  animation: bloom-fade-up 200ms var(--bloom-ease-out) backwards !important;
+}
+/* 顶栏 —— 从顶部滑下比从下方滑上更贴「页面打开」的语义。
+   :has(> _tabs) 是"真顶栏"的唯一判据，见下方 §去硬边框 里的说明。 */
+header[class*="_header"] {
+  animation: bloom-fade-down 240ms var(--bloom-ease-out) backwards !important;
+}
+/* 顶栏两按钮入场（newSession / Bloom trigger）：transform / box-shadow
+   加到原 transition 里 —— 原来 WIP 只 transition 了 background，
+   加 lift 不需要新 transition 字段，hover 时一并平滑。
+   ⚠️ 原来还有一条 [class*="_sessionLogButton"]：2026-09-29 实测该语义名在
+   DSH 全部包里 0 命中（顶栏现在只挂 Bloom 切换器），属于死规则，已删。 */
+button[class*="_newSession"],
+.dsh-bloom-trigger {
+  animation: bloom-fade-down 200ms var(--bloom-ease-out) backwards !important;
+}
+button[class*="_newSession"]:hover,
+.dsh-bloom-trigger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -6px var(--bloom-glow);
+}
+
+/* ═══ 输入卡三态 ═══════════════════════════════════════════════════
+ * owner 要的是"输入框会说话"（2026-09-10）：
+ *   静置   —— 光晕边框慢呼吸（还活着，在等你）
+ *   聚焦   —— 同一条呼吸，节奏收紧一倍（跟手）
+ *   执行中 —— 流光沿边框流转（它在跑）
+ *
+ * 两个 @property 是必需的：普通自定义属性在 keyframes 里只会**离散跳变**，
+ * 声明了 syntax 浏览器才真正插值。--bloom-halo 推 glass.ts 里那圈主题色
+ * 外晕的浓度（阴影本体写在那边，这里只给数值）；--bloom-spin 推 conic
+ * 渐变的起始角。
+ *
+ * 「执行中」的判据是 :has([class*="_pending"])：uV2eYG_pending 是 DSH 自己的
+ * 待处理指示点（8px 圆点 + 1s 脉冲），只在跑的时候渲染进输入卡 —— idle 态
+ * 实测 DOM 里查不到。比按 aria-label="停止" 判稳（那个会随界面语言变）。 */
+@property --bloom-halo { syntax: '<number>'; initial-value: 0.5; inherits: false; }
+@property --bloom-spin { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+
+@keyframes bloom-halo-breathe {
+  0%, 100% { --bloom-halo: 0.3; }
+  50%      { --bloom-halo: 0.85; }
+}
+@keyframes bloom-ring-spin {
+  to { --bloom-spin: 360deg; }
+}
+
+body[data-bloom-variant] div[class*="_composer"] div[class*="_card"] {
+  animation: bloom-halo-breathe 5.2s ease-in-out infinite;
+}
+body[data-bloom-variant] div[class*="_composer"] div[class*="_card"]:focus-within {
+  animation-duration: 2.6s;
+}
+
+/* 执行中：1.5px 的一圈环，conic 起始角在转，看上去像一束光绕着卡边跑。
+   mask 两层 + exclude 把实心圆角矩形挖成环，padding 就是环的粗细。
+   角度停留在 52%~90% 这一段，所以任一时刻只有约三分之一圈是亮的 ——
+   亮满一整圈就成了跑马灯，不是"流光"。 */
+body[data-bloom-variant] div[class*="_composer"] div[class*="_card"]:has([class*="_pending"])::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 18px;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--bloom-spin),
+    transparent 0 52%,
+    color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 20%) 70%,
+    color-mix(in oklch, var(--bloom-motion-2, #6b8f71), transparent 45%) 80%,
+    transparent 90% 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: bloom-ring-spin 2.6s linear infinite;
+}
+/* 跑起来时呼吸让位给流光 —— 两套动效同时在同一块边上跑会互相打架 */
+body[data-bloom-variant] div[class*="_composer"] div[class*="_card"]:has([class*="_pending"]) {
+  --bloom-halo: 0.7;
+  animation: none;
+}
+
+/* View Transition：主题切换时整页 cross-fade，让颜色"流过去"而不是瞬切。
+   只有浏览器支持 \`document.startViewTransition\` 时才触发（switcher.ts 里
+   调），这里只控动画时长 / 缓动；不支持和 reduced-motion 一起由下方兜底
+   清零。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ④ 无障碍：动效全部降级为瞬间 */
+@media (prefers-reduced-motion: reduce) {
+  [class*="_sidebarCol"] [role="treeitem"],
+  .dsh-bloom-switcher, .dsh-bloom-trigger, .dsh-bloom-option, .dsh-bloom-menu,
+  [class*="_composer"] div[class*="_card"],
+  [class*="_composer"] div[class*="_card"]::after,
+  [class*="_composer"] div[class*="_card"]:has([class*="_pending"])::after,
+  div[class*="_bubble"],
+  div:is([class*="_toolRow"], [class*="_toolChanges"]),
+  div[class*="_scrollBody"] > div[class*="_card"],
+  button[class*="_newSession"],
+  [class*="_scrollBody"]:not(:has(div[class*="_bubble"]))::before,
+  ::view-transition-old(root), ::view-transition-new(root) {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ══ 去硬边框：全站统一换成光带 / 浅底 / 阴影（owner 2026-09-10）══
+ *
+ * 原话：「现在已经不流行通过 border 去做切割了，要不然就是很淡的边框线加光感
+ * 流动或者是阴影，比硬的边框好看得多」；以及「不能光靠我一个一个说」。
+ *
+ * 所以全页扫了一遍 border-width > 0 的元素（39 处 / 9 类），按类别统一处理。
+ * 消息气泡与输入卡不在此列 —— 它们的边由 glass.ts 的玻璃体系管，动了会破相。
+ */
+
+/* [LES-03] 顶栏下沿辉光：使用外阴影自然衰减，避免伪元素裁剪硬边 */
+body[data-bloom-variant] header[class*="_header"] {
+  position: relative;
+  border-bottom: 0;
+  /* 强度实测定档：45% 时边界跳变 32 级、仍读成一条线；78% 跳变 10 级，
+     只剩"上面比下面亮一点"的错觉，这才是分隔而不是分割。 */
+  box-shadow: 0 28px 48px -28px color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 78%);
+}
+body[data-bloom-variant] header[class*="_header"]::after {
+  /* 宿主那条 0.5px 硬线关掉，交给上面的辉光 */
+  display: none;
+}
+
+/* 描边按钮 → 浅底。新会话 / Session 日志 / 本主题切换器三个长得一样，
+   一起处理，免得只改自己的显得突兀。
+
+   ⚠️ 三条约束，都来自 2026-09-29 那次「怎么这么丑」：
+   ① 一律写成 button[class*="_…"]。子串匹配会连后代一起命中 —— 侧栏新会话
+      按钮的后代 hHd-Xa_newSessionLabelMask / _Content / _Label / _Shortcut
+      全都含 "_newSession"，裸写 [class*="_newSession"] 时同一份 8% 底色被
+      叠三层（≈22%），Content 还比 LabelMask 宽 38px 且是直角 ——
+      按钮里套出一个硬边小条。
+   ② 底色只在这里出现一次。侧栏那颗的底色由 §新建会话按钮 那条给（同样是
+      transparent 92%），这里不再重复 —— 两处各写一遍、靠特异度决出胜负，
+      正是这个仓库 0.10.x 清过一次的老毛病（见 §会话条目 的注解）。
+   ③ 三个按钮用同一个值（92% / hover 86%），差一档就会看出"哪个重了一档"。 */
+body[data-bloom-variant] button[class*="_newSession"],
+body[data-bloom-variant] .dsh-bloom-trigger {
+  border-color: transparent;
+  /* transform + box-shadow 也进 transition：§7 hover 抬升要平滑，不能 snap。
+     §7 那边只改属性，不重声明 transition —— 避免重复定义打架 */
+  transition:
+    background var(--bloom-dur-fast, .16s) var(--bloom-ease, ease),
+    transform var(--bloom-dur-fast, .16s) var(--bloom-ease, ease),
+    box-shadow var(--bloom-dur-fast, .16s) var(--bloom-ease, ease);
+}
+body[data-bloom-variant] .dsh-bloom-trigger {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 92%);
+}
+body[data-bloom-variant] .dsh-bloom-trigger:hover {
+  background: color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 86%);
+}
+
+/* 侧栏底部操作区：上边框 → 向上扩散的极淡阴影 */
+body[data-bloom-variant] [class*="_footerActions"] {
+  border-top: 0;
+  box-shadow: 0 -6px 10px -8px color-mix(in oklch, var(--bloom-accent, #6b8f71), transparent 78%);
+}
+
+/* ═══ composer 发送键（DSH .yhfFVG_primary）══
+ * DSH 给这颗按钮写死了 color:#fff —— 不是 token，主题改不到。info-fill 修回
+ * 实心 accent 之后，亮色是「浅底 + 白箭头」没问题，暗色就反了：accentD 是亮色，
+ * 白箭头浮在亮底上约 1.6:1。glyph 改用 primary-dimmed —— 那一对（fill × dimmed）
+ * 是色板按 WCAG 反推校准过的：亮色 dimmed=bgL 近白，暗色 dimmed=bgD 近黑。
+ * 顺带说明：早先 info-fill 写成 mix(a,90)（10% 不透明度）时这条也救不了 ——
+ * 实测填充 rgb(231,233,218) vs 白箭头 1.24:1，整颗按钮在卡片里看不见
+ * （2026-10-08 用户实拍）。根因在 token，已在 tokens.ts 改回实心。 */
+body[data-bloom-variant] button[class*="_primary"] {
+  color: var(--dsw-alias-button-primary-dimmed);
+}
+
+/* ═══ 禁用主按钮的图标可读性（2026-09-14 用户实拍「浅色下看不清」）══
+ * DSH 禁用主按钮（空输入时的发送键等）的做法是整体叠 opacity .4，图标仍是
+ * 「fill 上的前景」label-primary-foreground —— 那个 token 亮色语义就是白
+ * （static neutral-bluish-00）。禁用态的底已经被压成 40% 的淡染，白箭头浮在
+ * 上面等于没有（禁用 bloom 样式实测原生同样如此，只是莫兰迪的淡底把它衬得更
+ * 明显）。README 挂着 WCAG 徽章，这里修正：图标用正文字色（label-primary）
+ * 才读得清，明暗自适应 —— 暗色下两者同为亮色，行为不变，只有亮色被纠正。
+ * 特异度比上面那条高（多一个 :disabled），两条同时生效：启用态走 dimmed，
+ * 禁用态走正文字色。 */
+body[data-bloom-variant] button[class*="_primary"]:disabled {
+  color: var(--dsw-alias-label-primary);
+}
+`
