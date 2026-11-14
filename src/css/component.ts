@@ -306,6 +306,20 @@ div[class*="_panel"] {
   border: 1px solid transparent;
   transition: border-color 0.16s ease, background 0.16s ease;
 }
+/* ⚠️ 交付物 / 改动文件卡片（.HOHHba_card）不吃上面那条 10px，
+   它自己声明的是 var(--dsw-radius-lg)（实测 16px）。被压成 10px 后
+   与内部 60px 高的 header 视觉不匹配，看起来「圆角消失了」
+   （owner 2026-11-14 实拍）。用 !important 恢复宿主原本的圆角变量。 */
+html body[data-bloom-variant] [class*="HOHHba_card"] {
+  border-radius: var(--dsw-radius-lg, 16px) !important;
+  /* 外层卡片本身也是不透明实色（background: var(--dsw-alias-bg-layer-1)），
+     header 上的材质只覆盖内容区，圆角外还是块实色底 —— 一起接管。 */
+  background-color: var(--bloom-surface-fill, var(--dsw-alias-bg-layer-1)) !important;
+  background-image: var(--bloom-surface-image, none) !important;
+  backdrop-filter: var(--bloom-surface-filter, none) !important;
+  -webkit-backdrop-filter: var(--bloom-surface-filter, none) !important;
+  border-color: var(--bloom-hairline, var(--dsw-alias-border-l2)) !important;
+}
 /* ── 消息卡 / 工具行的 hover 提亮 ─────────────────────────────────────
  *
  * ⚠️ 2026-11-14 owner：「我聚焦回答会显示弹窗没有材质，然后我聚焦弹窗后变透明了」。
