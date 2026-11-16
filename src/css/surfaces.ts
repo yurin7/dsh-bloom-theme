@@ -31,12 +31,20 @@ const POPUP_SHELLS = [
   '[class*="_selector"]',
   '[role="menu"]',
   '[role="listbox"]',
-  '[role="tooltip"]',
+  /* ⚠️ 2026-11-16 owner：「浅色模式下，聚焦小框体里的文字看不清」。
+     这里**不能再收 tooltip**（曾经有一条 `[role="tooltip"]`）。
+     原因见 glass.ts 里那段同名教训：DSH 的全局 Tooltip 用的是
+     `span[class*="_bubble"]`，它的文字色是**写死的 static 近白**，
+     底色靠 `--dsw-alias-tooltip-bg`（主题已接管为「深底」）。
+     一旦把 tooltip 也套上 --bloom-surface-fill（浅色档是近白的半透明），
+     就变成「近白底 + 近白字」，对比度接近 1.0 —— 小气泡里的文字直接消失。
+     tooltip 属于"必须高对比"的悬浮提示，不该跟材质走。
+     （实测：材质接管后 tooltip 背景 oklch(0.96.../0.58)，而文字仍是浅色。） */
   '[class*="_material_"]',
   /* 会话统计等"直接挂在 body 上"的浮层：由 src/dom.ts 的 watchPopups()
      运行时打上 data-bloom-popup（判据是「body 直接子元素 + 非 static 定位」，
      不依赖哈希类名）。见 dom.ts 里 POPUP_ATTR 上方的说明。 */
-  '[data-bloom-popup="true"]',
+  '[data-bloom-popup="true"]:not([role="tooltip"]):not([class*="_bubble"])',
   /* 会话条目悬浮预览卡（_card_l6gf9_9，宿主写死 rgb(44,44,46)）。 */
   '[class*="_exits_"] [class*="_card"]',
 ]

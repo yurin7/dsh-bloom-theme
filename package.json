@@ -1,6 +1,6 @@
 {
   "name": "dsh-bloom-theme",
-  "version": "0.28.2",
+  "version": "0.28.3",
   "description": "Bloom for DSH — 玻璃质感中国风主题（基于 webkubor/dsh-bloom-theme 的定制版，15 套 OKLCH 配色，全局统一材质）",
   "type": "module",
   "engines": {
